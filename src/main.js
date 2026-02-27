@@ -23,10 +23,13 @@ const WFS_URL =
   "service=WFS&version=2.0.0&request=GetFeature" +
   "&typeName=vaestoruutu:vaki2022_5km" +
   "&outputFormat=application/json" +
-  "&srsName=EPSG:3857";
+  "&srsName=EPSG:4326";
 
 const vectorSource = new VectorSource({
-  format: new GeoJSON(),
+  format: new GeoJSON({
+    dataProjection: "EPSG:4326",
+    featureProjection: "EPSG:3857",
+  }),
   url: WFS_URL,
 });
 
@@ -89,9 +92,7 @@ function buildSelectionOutlineGeometry(kunta) {
   const features = vectorSource.getFeatures().filter((f) => f.get("kunta") === kunta);
   if (features.length === 0) return null;
   if (features.length === 1) {
-    const geom = features[0].getGeometry().clone();
-    geom.scale(1.03, 1.03);
-    return geom;
+    return features[0].getGeometry().clone();
   }
   const turfPolys = features.map((f) => {
     const coords = f.getGeometry().getCoordinates();
@@ -101,12 +102,9 @@ function buildSelectionOutlineGeometry(kunta) {
   const unioned = union(fc);
   if (!unioned || !unioned.geometry) return null;
   const coords = unioned.geometry.coordinates;
-  const geom =
-    unioned.geometry.type === "MultiPolygon"
-      ? new MultiPolygon(coords)
-      : new Polygon(coords);
-  geom.scale(1.03, 1.03);
-  return geom;
+  return unioned.geometry.type === "MultiPolygon"
+    ? new MultiPolygon(coords)
+    : new Polygon(coords);
 }
 
 function buildKuntaPopulations() {
@@ -159,11 +157,11 @@ function municipalityStyle(feature) {
 
   const color = isSelected ? vibrantColor(c) : c;
   const fill = new Fill({
-    color: `rgba(${color.r}, ${color.g}, ${color.b}, ${isSelected ? 0.95 : 0.85})`,
+    color: `rgba(${color.r}, ${color.g}, ${color.b}, ${isSelected ? 0.55 : 0.45})`,
   });
   const stroke = isSelected
     ? null
-    : new Stroke({ color: `rgba(${c.r}, ${c.g}, ${c.b}, 0.4)`, width: 0.5 });
+    : new Stroke({ color: `rgba(${c.r}, ${c.g}, ${c.b}, 0.25)`, width: 0.5 });
 
   style = new Style({ fill, stroke });
   if (!isSelected) styleCache.set(kunta, style);
