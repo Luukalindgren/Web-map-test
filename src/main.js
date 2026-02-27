@@ -79,18 +79,43 @@ const styleCache = new Map();
 let selectedFeature = null;
 let currentDataset = defaultDataset;
 
-// WFS data is fetched once on load; no refetch on click or style changes
-function getColor(population) {
-  const stops = [
-    { val: 0, r: 255, g: 255, b: 229 },
-    { val: 1000, r: 255, g: 237, b: 160 },
-    { val: 5000, r: 254, g: 198, b: 79 },
-    { val: 10000, r: 254, g: 153, b: 41 },
-    { val: 30000, r: 236, g: 112, b: 20 },
-    { val: 80000, r: 204, g: 76, b: 2 },
-    { val: 150000, r: 153, g: 52, b: 4 },
-    { val: 300000, r: 102, g: 37, b: 6 },
-  ];
+// Dataset-specific 5-step scales (from data analysis: municipality 101–684k, 5km 1–115k, 1km 1–20k)
+const HEATMAP_SCALES = {
+  municipality: {
+    stops: [
+      { val: 0, r: 255, g: 255, b: 229 },
+      { val: 5000, r: 255, g: 237, b: 160 },
+      { val: 20000, r: 254, g: 198, b: 79 },
+      { val: 60000, r: 254, g: 153, b: 41 },
+      { val: 200000, r: 102, g: 37, b: 6 },
+    ],
+    labels: ["0", "5k", "20k", "60k", "200k+"],
+  },
+  "grid-5km": {
+    stops: [
+      { val: 0, r: 255, g: 255, b: 229 },
+      { val: 100, r: 255, g: 237, b: 160 },
+      { val: 1000, r: 254, g: 198, b: 79 },
+      { val: 5000, r: 254, g: 153, b: 41 },
+      { val: 20000, r: 102, g: 37, b: 6 },
+    ],
+    labels: ["0", "100", "1k", "5k", "20k+"],
+  },
+  "grid-1km": {
+    stops: [
+      { val: 0, r: 255, g: 255, b: 229 },
+      { val: 50, r: 255, g: 237, b: 160 },
+      { val: 500, r: 254, g: 198, b: 79 },
+      { val: 2000, r: 254, g: 153, b: 41 },
+      { val: 10000, r: 102, g: 37, b: 6 },
+    ],
+    labels: ["0", "50", "500", "2k", "10k+"],
+  },
+};
+
+function getColor(population, datasetId) {
+  const scale = HEATMAP_SCALES[datasetId] ?? HEATMAP_SCALES.municipality;
+  const stops = scale.stops;
 
   if (population <= stops[0].val) return stops[0];
   if (population >= stops[stops.length - 1].val) return stops[stops.length - 1];
@@ -228,7 +253,7 @@ function layerStyle(feature) {
   if (kunta == null) return null;
 
   const pop = getFeaturePopulation(feature);
-  const c = getColor(pop);
+  const c = getColor(pop, currentDataset.id);
   const isSelected = feature === selectedFeature;
 
   if (currentDataset.type === "grid") {
@@ -312,12 +337,13 @@ function hideMunicipalityDetails() {
 }
 
 function buildLegend() {
-  const labels = ["0", "1k", "5k", "10k", "30k", "80k", "150k", "300k+"];
-  const vals = [0, 1000, 5000, 10000, 30000, 80000, 150000, 300000];
+  const scale = HEATMAP_SCALES[currentDataset.id] ?? HEATMAP_SCALES.municipality;
+  const labels = scale.labels;
+  const vals = scale.stops.map((s) => s.val);
 
   let html = "<strong>Population</strong><div class='legend-bar'>";
   for (let i = 0; i < vals.length; i++) {
-    const c = getColor(vals[i]);
+    const c = getColor(vals[i], currentDataset.id);
     html += `<span class="legend-stop" style="background:rgb(${c.r},${c.g},${c.b})" title="${labels[i]}"></span>`;
   }
   html += "</div><div class='legend-labels'>";
@@ -368,7 +394,7 @@ const selectionOverlayLayer = new VectorLayer({
   source: selectionOverlaySource,
   style: (feature) => {
     const pop = feature.get("population") ?? 0;
-    const c = darkenColor(getColor(pop), 0.55);
+    const c = darkenColor(getColor(pop, currentDataset.id), 0.55);
     return new Style({
       fill: new Fill({ color: "transparent" }),
       stroke: new Stroke({
