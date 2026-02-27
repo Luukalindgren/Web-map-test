@@ -9,6 +9,11 @@ import VectorSource from "ol/source/Vector";
 import OSM from "ol/source/OSM";
 import GeoJSON from "ol/format/GeoJSON";
 import { Stroke, Fill, Style } from "ol/style";
+import Polygon from "ol/geom/Polygon";
+import MultiPolygon from "ol/geom/MultiPolygon";
+import Feature from "ol/Feature";
+import union from "@turf/union";
+import { polygon, featureCollection } from "@turf/helpers";
 
 const featureCountEl = document.getElementById("feature-count");
 const legendEl = document.getElementById("legend");
@@ -64,6 +69,46 @@ function safeSum(acc, val) {
   return n > 0 ? acc + n : acc;
 }
 
+function darkenColor(c, factor = 0.5) {
+  return {
+    r: Math.round(c.r * factor),
+    g: Math.round(c.g * factor),
+    b: Math.round(c.b * factor),
+  };
+}
+
+function vibrantColor(c, boost = 1.15) {
+  return {
+    r: Math.min(255, Math.round(c.r * boost)),
+    g: Math.min(255, Math.round(c.g * boost)),
+    b: Math.min(255, Math.round(c.b * boost)),
+  };
+}
+
+function buildSelectionOutlineGeometry(kunta) {
+  const features = vectorSource.getFeatures().filter((f) => f.get("kunta") === kunta);
+  if (features.length === 0) return null;
+  if (features.length === 1) {
+    const geom = features[0].getGeometry().clone();
+    geom.scale(1.03, 1.03);
+    return geom;
+  }
+  const turfPolys = features.map((f) => {
+    const coords = f.getGeometry().getCoordinates();
+    return polygon(coords);
+  });
+  const fc = featureCollection(turfPolys);
+  const unioned = union(fc);
+  if (!unioned || !unioned.geometry) return null;
+  const coords = unioned.geometry.coordinates;
+  const geom =
+    unioned.geometry.type === "MultiPolygon"
+      ? new MultiPolygon(coords)
+      : new Polygon(coords);
+  geom.scale(1.03, 1.03);
+  return geom;
+}
+
 function buildKuntaPopulations() {
   kuntaPopulation.clear();
   styleCache.clear();
@@ -112,11 +157,13 @@ function municipalityStyle(feature) {
   let style = styleCache.get(kunta);
   if (style && !isSelected) return style;
 
-  const fill = new Fill({ color: `rgba(${c.r}, ${c.g}, ${c.b}, 0.85)` });
-  const stroke = new Stroke({
-    color: isSelected ? "#ffffff" : `rgba(${c.r}, ${c.g}, ${c.b}, 0.4)`,
-    width: isSelected ? 3 : 0.5,
+  const color = isSelected ? vibrantColor(c) : c;
+  const fill = new Fill({
+    color: `rgba(${color.r}, ${color.g}, ${color.b}, ${isSelected ? 0.95 : 0.85})`,
   });
+  const stroke = isSelected
+    ? null
+    : new Stroke({ color: `rgba(${c.r}, ${c.g}, ${c.b}, 0.4)`, width: 0.5 });
 
   style = new Style({ fill, stroke });
   if (!isSelected) styleCache.set(kunta, style);
@@ -183,6 +230,7 @@ function buildLegend() {
 
 vectorSource.on("featuresloadend", () => {
   buildKuntaPopulations();
+  selectionOverlaySource.clear();
 
   const featureCount = vectorSource.getFeatures().length;
   const municipalityCount = kuntaPopulation.size;
@@ -202,14 +250,47 @@ const wfsLayer = new VectorLayer({
   style: municipalityStyle,
 });
 
+const selectionOverlaySource = new VectorSource();
+const selectionOverlayLayer = new VectorLayer({
+  source: selectionOverlaySource,
+  style: (feature) => {
+    const kunta = feature.get("kunta");
+    const info = kuntaPopulation.get(kunta);
+    const pop = info ? info.totalPopulation : 0;
+    const c = darkenColor(getColor(pop), 0.55);
+    return new Style({
+      fill: new Fill({ color: "transparent" }),
+      stroke: new Stroke({
+        color: `rgb(${c.r}, ${c.g}, ${c.b})`,
+        width: 3,
+      }),
+    });
+  },
+});
+
 const map = new OlMap({
   target: "map",
-  layers: [new TileLayer({ source: new OSM() }), wfsLayer],
+  layers: [
+    new TileLayer({ source: new OSM() }),
+    wfsLayer,
+    selectionOverlayLayer,
+  ],
   view: new View({
     center: [2900000, 8500000],
     zoom: 5,
   }),
 });
+
+function updateSelectionOverlay() {
+  selectionOverlaySource.clear();
+  if (selectedKunta) {
+    const geom = buildSelectionOutlineGeometry(selectedKunta);
+    if (geom) {
+      const outlineFeature = new Feature({ geometry: geom, kunta: selectedKunta });
+      selectionOverlaySource.addFeature(outlineFeature);
+    }
+  }
+}
 
 map.on("singleclick", (evt) => {
   const features = map.getFeaturesAtPixel(evt.pixel);
@@ -219,11 +300,13 @@ map.on("singleclick", (evt) => {
     if (info) {
       selectedKunta = kunta;
       wfsLayer.changed();
+      updateSelectionOverlay();
       renderMunicipalityDetails(kunta, info);
     }
   } else {
     selectedKunta = null;
     wfsLayer.changed();
+    selectionOverlaySource.clear();
     hideMunicipalityDetails();
   }
 });
