@@ -6,14 +6,10 @@ import View from "ol/View";
 import TileLayer from "ol/layer/Tile";
 import VectorLayer from "ol/layer/Vector";
 import VectorSource from "ol/source/Vector";
-import OSM from "ol/source/OSM";
+import XYZ from "ol/source/XYZ";
 import GeoJSON from "ol/format/GeoJSON";
 import { Stroke, Fill, Style } from "ol/style";
-import Polygon from "ol/geom/Polygon";
-import MultiPolygon from "ol/geom/MultiPolygon";
 import Feature from "ol/Feature";
-import union from "@turf/union";
-import { polygon, featureCollection } from "@turf/helpers";
 import proj4 from "proj4";
 import { register } from "ol/proj/proj4";
 import { get as getProjection } from "ol/proj";
@@ -34,6 +30,13 @@ const legendEl = document.getElementById("legend");
 
 const DATASETS = [
   {
+    id: "municipality",
+    label: "Municipality boundaries",
+    workspace: "vaestoalue",
+    typeName: "vaestoalue:kunta_vaki2024",
+    type: "municipality",
+  },
+  {
     id: "grid-5km",
     label: "Population 5km grid",
     workspace: "vaestoruutu",
@@ -46,20 +49,6 @@ const DATASETS = [
     workspace: "vaestoruutu",
     typeName: "vaestoruutu:vaki2024_1km",
     type: "grid",
-  },
-  {
-    id: "grid-1km-kp",
-    label: "Population 1km grid (kp)",
-    workspace: "vaestoruutu",
-    typeName: "vaestoruutu:vaki2024_1km_kp",
-    type: "grid",
-  },
-  {
-    id: "municipality",
-    label: "Municipality boundaries",
-    workspace: "vaestoalue",
-    typeName: "vaestoalue:kunta_vaki2024",
-    type: "municipality",
   },
 ];
 
@@ -76,18 +65,19 @@ function buildWfsUrl(dataset) {
   return `${base}?${params}`;
 }
 
+const defaultDataset = DATASETS[0];
 const vectorSource = new VectorSource({
   format: new GeoJSON({
     dataProjection: PROJECTION,
     featureProjection: PROJECTION,
   }),
-  url: buildWfsUrl(DATASETS[0]),
+  url: buildWfsUrl(defaultDataset),
 });
 
 const kuntaPopulation = new Map();
 const styleCache = new Map();
-let selectedKunta = null;
-let currentDataset = DATASETS[0];
+let selectedFeature = null;
+let currentDataset = defaultDataset;
 
 // WFS data is fetched once on load; no refetch on click or style changes
 function getColor(population) {
@@ -140,29 +130,15 @@ function vibrantColor(c, boost = 1.15) {
   };
 }
 
-function buildSelectionOutlineGeometry(kunta) {
-  const features = vectorSource.getFeatures().filter((f) => f.get("kunta") === kunta);
-  if (features.length === 0) return null;
-  if (currentDataset.type === "municipality" || features.length === 1) {
-    return features[0].getGeometry().clone();
-  }
-  const turfPolys = features.map((f) => {
-    const coords = f.getGeometry().getCoordinates();
-    return polygon(coords);
-  });
-  const fc = featureCollection(turfPolys);
-  const unioned = union(fc);
-  if (!unioned || !unioned.geometry) return null;
-  const coords = unioned.geometry.coordinates;
-  return unioned.geometry.type === "MultiPolygon"
-    ? new MultiPolygon(coords)
-    : new Polygon(coords);
+function buildSelectionOutlineGeometry(feature) {
+  if (!feature) return null;
+  return feature.getGeometry().clone();
 }
 
 function buildKuntaPopulations() {
   kuntaPopulation.clear();
   styleCache.clear();
-  selectedKunta = null;
+  selectedFeature = null;
 
   if (currentDataset.type === "municipality") {
     for (const feature of vectorSource.getFeatures()) {
@@ -216,14 +192,55 @@ function buildKuntaPopulations() {
   }
 }
 
-function municipalityStyle(feature) {
+function getFeaturePopulation(feature) {
+  if (currentDataset.type === "municipality") {
+    const info = kuntaPopulation.get(feature.get("kunta"));
+    return info ? info.totalPopulation : 0;
+  }
+  return feature.get("vaesto") || 0;
+}
+
+function getFeatureInfo(feature) {
+  const kunta = feature.get("kunta");
+  if (currentDataset.type === "municipality") {
+    return kuntaPopulation.get(kunta);
+  }
+  const vaesto = feature.get("vaesto") || 0;
+  const miehet = feature.get("miehet") ?? -1;
+  const naiset = feature.get("naiset") ?? -1;
+  const ika0_14 = feature.get("ika_0_14") ?? -1;
+  const ika15_64 = feature.get("ika_15_64") ?? -1;
+  const ika65_ = feature.get("ika_65_") ?? -1;
+  return {
+    totalPopulation: vaesto,
+    gridCount: 1,
+    miehet: miehet > 0 ? miehet : 0,
+    naiset: naiset > 0 ? naiset : 0,
+    ika_0_14: ika0_14 > 0 ? ika0_14 : 0,
+    ika_15_64: ika15_64 > 0 ? ika15_64 : 0,
+    ika_65_: ika65_ > 0 ? ika65_ : 0,
+    kunta,
+  };
+}
+
+function layerStyle(feature) {
   const kunta = feature.get("kunta");
   if (kunta == null) return null;
 
-  const info = kuntaPopulation.get(kunta);
-  const pop = info ? info.totalPopulation : 0;
+  const pop = getFeaturePopulation(feature);
   const c = getColor(pop);
-  const isSelected = selectedKunta === kunta;
+  const isSelected = feature === selectedFeature;
+
+  if (currentDataset.type === "grid") {
+    const color = isSelected ? vibrantColor(c) : c;
+    const fill = new Fill({
+      color: `rgba(${color.r}, ${color.g}, ${color.b}, ${isSelected ? 0.55 : 0.45})`,
+    });
+    const stroke = isSelected
+      ? null
+      : new Stroke({ color: `rgba(${c.r}, ${c.g}, ${c.b}, 0.25)`, width: 0.5 });
+    return new Style({ fill, stroke });
+  }
 
   let style = styleCache.get(kunta);
   if (style && !isSelected) return style;
@@ -258,11 +275,16 @@ function formatValue(key, value) {
   return typeof value === "number" ? value.toLocaleString() : String(value);
 }
 
-function renderMunicipalityDetails(kunta, info) {
+function renderFeatureDetails(feature, info) {
   const detailsEl = document.getElementById("municipality-details");
   detailsEl.classList.remove("hidden");
 
-  const title = info.name ? `${info.name} (${kunta})` : `Municipality ${kunta}`;
+  const kunta = feature.get("kunta");
+  const title = info.name
+    ? `${info.name} (${kunta})`
+    : currentDataset.type === "grid"
+      ? `Grid cell — Municipality ${kunta}`
+      : `Municipality ${kunta}`;
   const rows = Object.entries(LABELS)
     .filter(
       ([k]) =>
@@ -328,7 +350,7 @@ vectorSource.on("featuresloaderror", () => {
 
 function switchDataset(dataset) {
   currentDataset = dataset;
-  selectedKunta = null;
+  selectedFeature = null;
   selectionOverlaySource.clear();
   hideMunicipalityDetails();
   featureCountEl.textContent = "Loading…";
@@ -338,16 +360,14 @@ function switchDataset(dataset) {
 
 const wfsLayer = new VectorLayer({
   source: vectorSource,
-  style: municipalityStyle,
+  style: layerStyle,
 });
 
 const selectionOverlaySource = new VectorSource();
 const selectionOverlayLayer = new VectorLayer({
   source: selectionOverlaySource,
   style: (feature) => {
-    const kunta = feature.get("kunta");
-    const info = kuntaPopulation.get(kunta);
-    const pop = info ? info.totalPopulation : 0;
+    const pop = feature.get("population") ?? 0;
     const c = darkenColor(getColor(pop), 0.55);
     return new Style({
       fill: new Fill({ color: "transparent" }),
@@ -364,7 +384,13 @@ getProjection(PROJECTION).setExtent(FINLAND_EXTENT);
 const map = new OlMap({
   target: "map",
   layers: [
-    new TileLayer({ source: new OSM() }),
+    new TileLayer({
+      source: new XYZ({
+        url: "https://{a-c}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png",
+        attributions:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      }),
+    }),
     wfsLayer,
     selectionOverlayLayer,
   ],
@@ -378,10 +404,15 @@ const map = new OlMap({
 
 function updateSelectionOverlay() {
   selectionOverlaySource.clear();
-  if (selectedKunta) {
-    const geom = buildSelectionOutlineGeometry(selectedKunta);
+  if (selectedFeature) {
+    const geom = buildSelectionOutlineGeometry(selectedFeature);
     if (geom) {
-      const outlineFeature = new Feature({ geometry: geom, kunta: selectedKunta });
+      const pop = getFeaturePopulation(selectedFeature);
+      const outlineFeature = new Feature({
+        geometry: geom,
+        kunta: selectedFeature.get("kunta"),
+        population: pop,
+      });
       selectionOverlaySource.addFeature(outlineFeature);
     }
   }
@@ -390,16 +421,16 @@ function updateSelectionOverlay() {
 map.on("singleclick", (evt) => {
   const features = map.getFeaturesAtPixel(evt.pixel);
   if (features.length > 0) {
-    const kunta = features[0].get("kunta");
-    const info = kuntaPopulation.get(kunta);
+    const feature = features[0];
+    const info = getFeatureInfo(feature);
     if (info) {
-      selectedKunta = kunta;
+      selectedFeature = feature;
       wfsLayer.changed();
       updateSelectionOverlay();
-      renderMunicipalityDetails(kunta, info);
+      renderFeatureDetails(feature, info);
     }
   } else {
-    selectedKunta = null;
+    selectedFeature = null;
     wfsLayer.changed();
     selectionOverlaySource.clear();
     hideMunicipalityDetails();
