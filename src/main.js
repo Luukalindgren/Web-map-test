@@ -14,6 +14,20 @@ import MultiPolygon from "ol/geom/MultiPolygon";
 import Feature from "ol/Feature";
 import union from "@turf/union";
 import { polygon, featureCollection } from "@turf/helpers";
+import proj4 from "proj4";
+import { register } from "ol/proj/proj4";
+import { get as getProjection } from "ol/proj";
+
+// EPSG:3067 (ETRS-TM35FIN) – Finland's national projection. Grid cells align with North (0° rotation) across all of Finland.
+proj4.defs(
+  "EPSG:3067",
+  "+proj=tmerc +lat_0=0 +lon_0=27 +k=0.9996 +x_0=500000 +y_0=0 +ellps=GRS80 +towgs84=0,0,0,0,0,0,0 +units=m +no_defs"
+);
+register(proj4);
+
+const PROJECTION = "EPSG:3067";
+const FINLAND_EXTENT = [50199, 6582464, 761274, 7799839]; // Finland in EPSG:3067
+const FINLAND_CENTER = [405700, 7191000];
 
 const featureCountEl = document.getElementById("feature-count");
 const legendEl = document.getElementById("legend");
@@ -23,12 +37,12 @@ const WFS_URL =
   "service=WFS&version=2.0.0&request=GetFeature" +
   "&typeName=vaestoruutu:vaki2022_5km" +
   "&outputFormat=application/json" +
-  "&srsName=EPSG:4326";
+  "&srsName=EPSG:3067";
 
 const vectorSource = new VectorSource({
   format: new GeoJSON({
-    dataProjection: "EPSG:4326",
-    featureProjection: "EPSG:3857",
+    dataProjection: PROJECTION,
+    featureProjection: PROJECTION,
   }),
   url: WFS_URL,
 });
@@ -266,6 +280,8 @@ const selectionOverlayLayer = new VectorLayer({
   },
 });
 
+getProjection(PROJECTION).setExtent(FINLAND_EXTENT);
+
 const map = new OlMap({
   target: "map",
   layers: [
@@ -274,8 +290,10 @@ const map = new OlMap({
     selectionOverlayLayer,
   ],
   view: new View({
-    center: [2900000, 8500000],
+    projection: PROJECTION,
+    center: FINLAND_CENTER,
     zoom: 5,
+    extent: FINLAND_EXTENT,
   }),
 });
 

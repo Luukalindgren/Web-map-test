@@ -34,6 +34,30 @@ The public site should only be accessible while the user is actively working in 
 1. Stop the tunnel: `pkill -f cloudflared` or kill the tunnel process
 2. Stop the dev server: `pkill -f "vite"` (or leave it; it will stop when the workspace shuts down)
 
+### Statistics Finland WFS API options
+
+**Base URL:** `https://geo.stat.fi/geoserver/vaestoruutu/wfs`
+
+**Projections (srsName):**
+
+| Code      | Name              | Notes                                                                 |
+| --------- | ----------------- | --------------------------------------------------------------------- |
+| EPSG:3067 | ETRS-TM35FIN      | Finland's national projection. Grid cells align with North (0°). Use this for correct alignment. |
+| EPSG:4326 | WGS84             | Lat/lon. Causes grid rotation (anticlockwise west, clockwise east) when displayed in Web Mercator. |
+| EPSG:3857 | Web Mercator      | Same rotation issues as 4326 when used with OSM tiles.                |
+
+**Datasets (typeName):** Population grid by year and resolution:
+
+| Resolution | Layers (examples)     | Notes                    |
+| ---------- | --------------------- | ------------------------- |
+| 1 km       | `vaestoruutu:vaki2022_1km` | More detail, more features |
+| 5 km       | `vaestoruutu:vaki2022_5km` | Less detail, fewer features |
+| 1 km _kp   | `vaestoruutu:vaki2022_1km_kp` | Variant of 1 km layer      |
+
+Years: 2005–2024 (e.g. `vaki2023_5km`, `vaki2024_1km`).
+
+**Output formats:** `application/json` (GeoJSON), `application/gml+xml`, `csv`, `excel`, etc.
+
 ### Notes
 
 - The WFS endpoint (`geo.stat.fi`) is a public API; no API keys or secrets needed.

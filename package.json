@@ -12,6 +12,7 @@
   "dependencies": {
     "@turf/union": "^7.3.4",
     "ol": "^10.8.0",
+    "proj4": "^2.20.2",
     "vite": "^7.3.1"
   },
   "devDependencies": {
