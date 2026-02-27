@@ -27,7 +27,9 @@ const vectorSource = new VectorSource({
 
 const kuntaPopulation = new Map();
 const styleCache = new Map();
+let selectedKunta = null;
 
+// WFS data is fetched once on load; no refetch on click or style changes
 function getColor(population) {
   const stops = [
     { val: 0, r: 255, g: 255, b: 229 },
@@ -57,21 +59,43 @@ function getColor(population) {
   return stops[stops.length - 1];
 }
 
+function safeSum(acc, val) {
+  const n = Number(val);
+  return n > 0 ? acc + n : acc;
+}
+
 function buildKuntaPopulations() {
   kuntaPopulation.clear();
   styleCache.clear();
+  selectedKunta = null;
 
   for (const feature of vectorSource.getFeatures()) {
     const kunta = feature.get("kunta");
-    const vaesto = feature.get("vaesto") || 0;
     if (kunta == null) continue;
+
+    const vaesto = feature.get("vaesto") || 0;
+    const miehet = feature.get("miehet") ?? -1;
+    const naiset = feature.get("naiset") ?? -1;
+    const ika0_14 = feature.get("ika_0_14") ?? -1;
+    const ika15_64 = feature.get("ika_15_64") ?? -1;
+    const ika65_ = feature.get("ika_65_") ?? -1;
 
     const existing = kuntaPopulation.get(kunta) || {
       totalPopulation: 0,
       gridCount: 0,
+      miehet: 0,
+      naiset: 0,
+      ika_0_14: 0,
+      ika_15_64: 0,
+      ika_65_: 0,
     };
     existing.totalPopulation += vaesto;
     existing.gridCount += 1;
+    existing.miehet = safeSum(existing.miehet, miehet);
+    existing.naiset = safeSum(existing.naiset, naiset);
+    existing.ika_0_14 = safeSum(existing.ika_0_14, ika0_14);
+    existing.ika_15_64 = safeSum(existing.ika_15_64, ika15_64);
+    existing.ika_65_ = safeSum(existing.ika_65_, ika65_);
     kuntaPopulation.set(kunta, existing);
   }
 }
@@ -80,23 +104,64 @@ function municipalityStyle(feature) {
   const kunta = feature.get("kunta");
   if (kunta == null) return null;
 
-  let style = styleCache.get(kunta);
-  if (style) return style;
-
   const info = kuntaPopulation.get(kunta);
   const pop = info ? info.totalPopulation : 0;
   const c = getColor(pop);
+  const isSelected = selectedKunta === kunta;
 
-  style = new Style({
-    fill: new Fill({ color: `rgba(${c.r}, ${c.g}, ${c.b}, 0.85)` }),
-    stroke: new Stroke({
-      color: `rgba(${c.r}, ${c.g}, ${c.b}, 0.4)`,
-      width: 0.5,
-    }),
+  let style = styleCache.get(kunta);
+  if (style && !isSelected) return style;
+
+  const fill = new Fill({ color: `rgba(${c.r}, ${c.g}, ${c.b}, 0.85)` });
+  const stroke = new Stroke({
+    color: isSelected ? "#ffffff" : `rgba(${c.r}, ${c.g}, ${c.b}, 0.4)`,
+    width: isSelected ? 3 : 0.5,
   });
 
-  styleCache.set(kunta, style);
+  style = new Style({ fill, stroke });
+  if (!isSelected) styleCache.set(kunta, style);
   return style;
+}
+
+const LABELS = {
+  totalPopulation: "Total population",
+  gridCount: "Grid cells",
+  miehet: "Men",
+  naiset: "Women",
+  ika_0_14: "Age 0–14",
+  ika_15_64: "Age 15–64",
+  ika_65_: "Age 65+",
+};
+
+function formatValue(key, value) {
+  if (key === "gridCount") return value.toLocaleString();
+  return typeof value === "number" ? value.toLocaleString() : String(value);
+}
+
+function renderMunicipalityDetails(kunta, info) {
+  const detailsEl = document.getElementById("municipality-details");
+  detailsEl.classList.remove("hidden");
+
+  const rows = Object.entries(LABELS)
+    .filter(([k]) => info[k] !== undefined)
+    .map(
+      ([key, label]) =>
+        `<tr><td class="label">${label}</td><td class="value">${formatValue(key, info[key])}</td></tr>`
+    )
+    .join("");
+
+  detailsEl.innerHTML = `
+    <h3 class="municipality-title">Municipality ${kunta}</h3>
+    <table class="municipality-table">
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function hideMunicipalityDetails() {
+  const detailsEl = document.getElementById("municipality-details");
+  detailsEl.classList.add("hidden");
+  detailsEl.innerHTML = "";
 }
 
 function buildLegend() {
@@ -152,8 +217,13 @@ map.on("singleclick", (evt) => {
     const kunta = features[0].get("kunta");
     const info = kuntaPopulation.get(kunta);
     if (info) {
-      featureCountEl.textContent =
-        `Municipality ${kunta} — Population: ${info.totalPopulation.toLocaleString()} (${info.gridCount} grid cells)`;
+      selectedKunta = kunta;
+      wfsLayer.changed();
+      renderMunicipalityDetails(kunta, info);
     }
+  } else {
+    selectedKunta = null;
+    wfsLayer.changed();
+    hideMunicipalityDetails();
   }
 });

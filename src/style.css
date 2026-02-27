@@ -87,3 +87,50 @@ h1 {
 #feature-count {
   color: #555;
 }
+
+.municipality-details {
+  margin-top: 1rem;
+  padding: 1rem 1.25rem;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-left: 4px solid #2366d1;
+}
+
+.municipality-details.hidden {
+  display: none;
+}
+
+.municipality-title {
+  font-size: 1.1rem;
+  color: #16213e;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+}
+
+.municipality-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.municipality-table td {
+  padding: 0.5rem 1rem 0.5rem 0;
+  border-bottom: 1px solid #e8eaed;
+}
+
+.municipality-table tr:last-child td {
+  border-bottom: none;
+}
+
+.municipality-table .label {
+  color: #5f6368;
+  font-weight: 500;
+  width: 40%;
+}
+
+.municipality-table .value {
+  color: #1a1a2e;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
