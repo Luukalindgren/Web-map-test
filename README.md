@@ -1,3 +1,5 @@
+https://luukalindgren.github.io/Web-map-test/
+
 # Web-map-test
 
 A simple web application for visualizing WFS (Web Feature Service) map data using [OpenLayers](https://openlayers.org/) and [Vite](https://vite.dev/).
