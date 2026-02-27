@@ -60,13 +60,17 @@ Years: 2005–2024 (e.g. `vaki2023_5km`, `vaki2024_1km`).
 
 ### GitHub Pages deployment
 
-The app deploys to GitHub Pages on push to `main` via GitHub Actions. To enable:
+The app deploys to GitHub Pages on push to `main` via GitHub Actions.
 
+**To enable:**
 1. Repo → **Settings** → **Pages**
 2. Under "Build and deployment", set **Source** to **GitHub Actions**
-3. Push to `main` (or re-run the workflow) to deploy
+3. Save (do not select a branch — Actions is the source)
+4. Go to **Actions** tab → "Deploy to GitHub Pages" → **Run workflow** (or push to `main`)
 
-The site will be at `https://<username>.github.io/Web-map-test/` (or your custom domain).
+**URL:** `https://<username>.github.io/Web-map-test/`
+
+The `base` in `vite.config.js` must match the repo name for asset paths to resolve.
 
 ### Notes
 
