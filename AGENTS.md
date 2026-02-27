@@ -58,6 +58,16 @@ Years: 2005–2024 (e.g. `vaki2023_5km`, `vaki2024_1km`).
 
 **Output formats:** `application/json` (GeoJSON), `application/gml+xml`, `csv`, `excel`, etc.
 
+### Cloudflare Pages deployment
+
+The app deploys to Cloudflare Pages on push to `main` via GitHub Actions. To enable:
+
+1. Create a Cloudflare API token with "Cloudflare Pages — Edit" permission.
+2. Add GitHub repository secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
+3. The first push to `main` creates the project; the site will be at `https://web-map-test.pages.dev` (or your custom domain).
+
+Alternatively, connect the repo in Cloudflare Dashboard → Pages → Create project → Connect to Git, with build command `npm run build` and output directory `dist`.
+
 ### Notes
 
 - The WFS endpoint (`geo.stat.fi`) is a public API; no API keys or secrets needed.
