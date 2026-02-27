@@ -8,6 +8,15 @@
   <body>
     <div id="app">
       <h1>Finland Municipality Population Heatmap</h1>
+      <div class="dataset-selector">
+        <label for="dataset-select">Map view:</label>
+        <select id="dataset-select" aria-label="Select map dataset">
+          <option value="grid-5km">Population 5km grid</option>
+          <option value="grid-1km">Population 1km grid</option>
+          <option value="grid-1km-kp">Population 1km grid (kp)</option>
+          <option value="municipality">Municipality boundaries</option>
+        </select>
+      </div>
       <div id="map-container">
         <div id="map"></div>
         <div id="legend"></div>

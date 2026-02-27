@@ -32,24 +32,62 @@ const FINLAND_CENTER = [405700, 7191000];
 const featureCountEl = document.getElementById("feature-count");
 const legendEl = document.getElementById("legend");
 
-const WFS_URL =
-  "https://geo.stat.fi/geoserver/vaestoruutu/wfs?" +
-  "service=WFS&version=2.0.0&request=GetFeature" +
-  "&typeName=vaestoruutu:vaki2022_5km" +
-  "&outputFormat=application/json" +
-  "&srsName=EPSG:3067";
+const DATASETS = [
+  {
+    id: "grid-5km",
+    label: "Population 5km grid",
+    workspace: "vaestoruutu",
+    typeName: "vaestoruutu:vaki2024_5km",
+    type: "grid",
+  },
+  {
+    id: "grid-1km",
+    label: "Population 1km grid",
+    workspace: "vaestoruutu",
+    typeName: "vaestoruutu:vaki2024_1km",
+    type: "grid",
+  },
+  {
+    id: "grid-1km-kp",
+    label: "Population 1km grid (kp)",
+    workspace: "vaestoruutu",
+    typeName: "vaestoruutu:vaki2024_1km_kp",
+    type: "grid",
+  },
+  {
+    id: "municipality",
+    label: "Municipality boundaries",
+    workspace: "vaestoalue",
+    typeName: "vaestoalue:kunta_vaki2024",
+    type: "municipality",
+  },
+];
+
+function buildWfsUrl(dataset) {
+  const base = `https://geo.stat.fi/geoserver/${dataset.workspace}/wfs`;
+  const params = new URLSearchParams({
+    service: "WFS",
+    version: "2.0.0",
+    request: "GetFeature",
+    typeName: dataset.typeName,
+    outputFormat: "application/json",
+    srsName: PROJECTION,
+  });
+  return `${base}?${params}`;
+}
 
 const vectorSource = new VectorSource({
   format: new GeoJSON({
     dataProjection: PROJECTION,
     featureProjection: PROJECTION,
   }),
-  url: WFS_URL,
+  url: buildWfsUrl(DATASETS[0]),
 });
 
 const kuntaPopulation = new Map();
 const styleCache = new Map();
 let selectedKunta = null;
+let currentDataset = DATASETS[0];
 
 // WFS data is fetched once on load; no refetch on click or style changes
 function getColor(population) {
@@ -105,7 +143,7 @@ function vibrantColor(c, boost = 1.15) {
 function buildSelectionOutlineGeometry(kunta) {
   const features = vectorSource.getFeatures().filter((f) => f.get("kunta") === kunta);
   if (features.length === 0) return null;
-  if (features.length === 1) {
+  if (currentDataset.type === "municipality" || features.length === 1) {
     return features[0].getGeometry().clone();
   }
   const turfPolys = features.map((f) => {
@@ -126,34 +164,55 @@ function buildKuntaPopulations() {
   styleCache.clear();
   selectedKunta = null;
 
-  for (const feature of vectorSource.getFeatures()) {
-    const kunta = feature.get("kunta");
-    if (kunta == null) continue;
-
-    const vaesto = feature.get("vaesto") || 0;
-    const miehet = feature.get("miehet") ?? -1;
-    const naiset = feature.get("naiset") ?? -1;
-    const ika0_14 = feature.get("ika_0_14") ?? -1;
-    const ika15_64 = feature.get("ika_15_64") ?? -1;
-    const ika65_ = feature.get("ika_65_") ?? -1;
-
-    const existing = kuntaPopulation.get(kunta) || {
-      totalPopulation: 0,
-      gridCount: 0,
-      miehet: 0,
-      naiset: 0,
-      ika_0_14: 0,
-      ika_15_64: 0,
-      ika_65_: 0,
-    };
-    existing.totalPopulation += vaesto;
-    existing.gridCount += 1;
-    existing.miehet = safeSum(existing.miehet, miehet);
-    existing.naiset = safeSum(existing.naiset, naiset);
-    existing.ika_0_14 = safeSum(existing.ika_0_14, ika0_14);
-    existing.ika_15_64 = safeSum(existing.ika_15_64, ika15_64);
-    existing.ika_65_ = safeSum(existing.ika_65_, ika65_);
-    kuntaPopulation.set(kunta, existing);
+  if (currentDataset.type === "municipality") {
+    for (const feature of vectorSource.getFeatures()) {
+      const kunta = feature.get("kunta");
+      if (kunta == null) continue;
+      const vaesto = feature.get("vaesto") || 0;
+      const miehet = feature.get("miehet") ?? 0;
+      const naiset = feature.get("naiset") ?? 0;
+      const ika0_14 = feature.get("ika_0_14") ?? 0;
+      const ika15_64 = feature.get("ika_15_64") ?? 0;
+      const ika65_ = feature.get("ika_65_") ?? 0;
+      kuntaPopulation.set(kunta, {
+        totalPopulation: vaesto,
+        gridCount: 1,
+        miehet: miehet > 0 ? miehet : 0,
+        naiset: naiset > 0 ? naiset : 0,
+        ika_0_14: ika0_14 > 0 ? ika0_14 : 0,
+        ika_15_64: ika15_64 > 0 ? ika15_64 : 0,
+        ika_65_: ika65_ > 0 ? ika65_ : 0,
+        name: feature.get("name") || feature.get("nimi") || kunta,
+      });
+    }
+  } else {
+    for (const feature of vectorSource.getFeatures()) {
+      const kunta = feature.get("kunta");
+      if (kunta == null) continue;
+      const vaesto = feature.get("vaesto") || 0;
+      const miehet = feature.get("miehet") ?? -1;
+      const naiset = feature.get("naiset") ?? -1;
+      const ika0_14 = feature.get("ika_0_14") ?? -1;
+      const ika15_64 = feature.get("ika_15_64") ?? -1;
+      const ika65_ = feature.get("ika_65_") ?? -1;
+      const existing = kuntaPopulation.get(kunta) || {
+        totalPopulation: 0,
+        gridCount: 0,
+        miehet: 0,
+        naiset: 0,
+        ika_0_14: 0,
+        ika_15_64: 0,
+        ika_65_: 0,
+      };
+      existing.totalPopulation += vaesto;
+      existing.gridCount += 1;
+      existing.miehet = safeSum(existing.miehet, miehet);
+      existing.naiset = safeSum(existing.naiset, naiset);
+      existing.ika_0_14 = safeSum(existing.ika_0_14, ika0_14);
+      existing.ika_15_64 = safeSum(existing.ika_15_64, ika15_64);
+      existing.ika_65_ = safeSum(existing.ika_65_, ika65_);
+      kuntaPopulation.set(kunta, existing);
+    }
   }
 }
 
@@ -190,10 +249,12 @@ const LABELS = {
   ika_0_14: "Age 0–14",
   ika_15_64: "Age 15–64",
   ika_65_: "Age 65+",
+  name: "Name",
 };
 
 function formatValue(key, value) {
   if (key === "gridCount") return value.toLocaleString();
+  if (key === "name") return String(value ?? "");
   return typeof value === "number" ? value.toLocaleString() : String(value);
 }
 
@@ -201,8 +262,13 @@ function renderMunicipalityDetails(kunta, info) {
   const detailsEl = document.getElementById("municipality-details");
   detailsEl.classList.remove("hidden");
 
+  const title = info.name ? `${info.name} (${kunta})` : `Municipality ${kunta}`;
   const rows = Object.entries(LABELS)
-    .filter(([k]) => info[k] !== undefined)
+    .filter(
+      ([k]) =>
+        info[k] !== undefined &&
+        (k !== "gridCount" || currentDataset.type === "grid")
+    )
     .map(
       ([key, label]) =>
         `<tr><td class="label">${label}</td><td class="value">${formatValue(key, info[key])}</td></tr>`
@@ -210,7 +276,7 @@ function renderMunicipalityDetails(kunta, info) {
     .join("");
 
   detailsEl.innerHTML = `
-    <h3 class="municipality-title">Municipality ${kunta}</h3>
+    <h3 class="municipality-title">${title}</h3>
     <table class="municipality-table">
       <tbody>${rows}</tbody>
     </table>
@@ -246,7 +312,10 @@ vectorSource.on("featuresloadend", () => {
 
   const featureCount = vectorSource.getFeatures().length;
   const municipalityCount = kuntaPopulation.size;
-  featureCountEl.textContent = `Loaded ${featureCount.toLocaleString()} grid cells across ${municipalityCount} municipalities`;
+  const isGrid = currentDataset.type === "grid";
+  featureCountEl.textContent = isGrid
+    ? `Loaded ${featureCount.toLocaleString()} grid cells across ${municipalityCount} municipalities`
+    : `Loaded ${municipalityCount} municipalities`;
 
   wfsLayer.changed();
   buildLegend();
@@ -256,6 +325,16 @@ vectorSource.on("featuresloaderror", () => {
   featureCountEl.textContent =
     "Could not load WFS features — check the console for details.";
 });
+
+function switchDataset(dataset) {
+  currentDataset = dataset;
+  selectedKunta = null;
+  selectionOverlaySource.clear();
+  hideMunicipalityDetails();
+  featureCountEl.textContent = "Loading…";
+  vectorSource.setUrl(buildWfsUrl(dataset));
+  vectorSource.refresh();
+}
 
 const wfsLayer = new VectorLayer({
   source: vectorSource,
@@ -325,4 +404,9 @@ map.on("singleclick", (evt) => {
     selectionOverlaySource.clear();
     hideMunicipalityDetails();
   }
+});
+
+document.getElementById("dataset-select").addEventListener("change", (e) => {
+  const dataset = DATASETS.find((d) => d.id === e.target.value);
+  if (dataset) switchDataset(dataset);
 });
