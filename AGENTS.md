@@ -58,15 +58,15 @@ Years: 2005–2024 (e.g. `vaki2023_5km`, `vaki2024_1km`).
 
 **Output formats:** `application/json` (GeoJSON), `application/gml+xml`, `csv`, `excel`, etc.
 
-### Cloudflare Pages deployment
+### GitHub Pages deployment
 
-The app deploys to Cloudflare Pages on push to `main` via GitHub Actions. To enable:
+The app deploys to GitHub Pages on push to `main` via GitHub Actions. To enable:
 
-1. Create a Cloudflare API token with "Cloudflare Pages — Edit" permission.
-2. Add GitHub repository secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`.
-3. The first push to `main` creates the project; the site will be at `https://web-map-test.pages.dev` (or your custom domain).
+1. Repo → **Settings** → **Pages**
+2. Under "Build and deployment", set **Source** to **GitHub Actions**
+3. Push to `main` (or re-run the workflow) to deploy
 
-Alternatively, connect the repo in Cloudflare Dashboard → Pages → Create project → Connect to Git, with build command `npm run build` and output directory `dist`.
+The site will be at `https://<username>.github.io/Web-map-test/` (or your custom domain).
 
 ### Notes
 
